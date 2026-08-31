@@ -37,6 +37,20 @@ python main.py
 
 ## Funcionalidades
 
+### 📦 División de órdenes (principal)
+
+Divide una orden de producción en referencias consecutivas (`.01`, `.02`, …) con distribución proporcional de:
+
+- **Cantidades** (una referencia por cada cantidad ingresada)
+- **KG total** proporcional a cada referencia
+- **Tiempo total** en `HH:MM:SS` (o rango inicio/fin)
+- **DIG total** (opcional)
+- **Tintas** (÷1000 automático, opcional)
+
+**Ejemplo:** Orden `202608004113` con 32 cantidades → genera `202608004113.01` … `202608004113.32`.
+
+Use **📋 PEGAR CANTIDADES** para cargar listas separadas por comas.
+
 ### ⏱️ División de tiempos
 
 Ingresa hora de inicio, hora final y las cantidades producidas. La aplicación calcula automáticamente los intervalos de tiempo proporcionales a cada cantidad.

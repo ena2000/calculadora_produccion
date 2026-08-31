@@ -11,16 +11,26 @@ import customtkinter as ctk
 from calculos import (
     COLORES_TINTA,
     FilaTinta,
+    ReferenciaOrden,
     SegmentoTiempo,
     calcular_consumo_tintas,
+    calcular_division_orden,
     calcular_division_tiempos,
     calcular_distribucion_valor,
+    distribuir_tiempo_segundos,
+    duracion_entre_horas,
+    formatear_kg,
     formatear_porcentaje,
     formatear_tinta,
     formatear_valor_distribuido,
+    formato_tiempo_hms,
+    parse_lista_cantidades,
+    texto_excel_orden,
+    texto_excel_orden_tintas,
     texto_excel_tiempos,
     texto_excel_tintas,
     texto_excel_valores,
+    validar_valor_tinta,
 )
 from portapapeles import copiar_al_portapapeles
 
@@ -42,8 +52,10 @@ class CalculadoraProduccionApp(ctk.CTk):
         self._segmentos_tiempo: List[SegmentoTiempo] = []
         self._filas_tinta: List[FilaTinta] = []
         self._valores_distribuidos: List = []
+        self._referencias_orden: List[ReferenciaOrden] = []
 
         self._ink_entries: dict[str, ctk.CTkEntry] = {}
+        self._orden_ink_entries: dict[str, ctk.CTkEntry] = {}
 
         self._construir_ui()
 
@@ -68,10 +80,12 @@ class CalculadoraProduccionApp(ctk.CTk):
         self.tabview.grid(row=2, column=0, padx=20, pady=(0, 16), sticky="nsew")
         self.grid_rowconfigure(2, weight=1)
 
+        self.tab_orden = self.tabview.add("📦 División de órdenes")
         self.tab_tiempos = self.tabview.add("⏱️ División de tiempos")
         self.tab_tintas = self.tabview.add("🎨 Consumo de tintas")
         self.tab_valores = self.tabview.add("🧮 Distribución de valores")
 
+        self._construir_tab_orden()
         self._construir_tab_tiempos()
         self._construir_tab_tintas()
         self._construir_tab_valores()
@@ -107,6 +121,16 @@ class CalculadoraProduccionApp(ctk.CTk):
             fg_color="#8B0000",
             hover_color="#A52A2A",
             command=self._eliminar_cantidad,
+        ).pack(side="left", padx=(0, 8))
+
+        ctk.CTkButton(
+            btn_frame,
+            text="📋 PEGAR CANTIDADES",
+            width=180,
+            height=36,
+            fg_color="#2E7D32",
+            hover_color="#1B5E20",
+            command=self._pegar_cantidades,
         ).pack(side="left")
 
         for valor in ("10000", "10000", "5000"):
@@ -143,6 +167,219 @@ class CalculadoraProduccionApp(ctk.CTk):
 
     def _obtener_cantidades(self) -> List[str]:
         return [e.get() for e in self._cantidad_entries]
+
+    def _limpiar_cantidades(self) -> None:
+        while len(self._cantidad_entries) > 0:
+            entry = self._cantidad_entries.pop()
+            entry.master.destroy()
+
+    def _establecer_cantidades(self, valores: List[str]) -> None:
+        self._limpiar_cantidades()
+        for valor in valores:
+            self._agregar_cantidad(valor)
+
+    def _pegar_cantidades(self) -> None:
+        dialogo = ctk.CTkInputDialog(
+            text="Pegue las cantidades separadas por comas o saltos de línea:",
+            title="Pegar cantidades",
+        )
+        texto = dialogo.get_input()
+        if not texto:
+            return
+        try:
+            valores = parse_lista_cantidades(texto)
+            self._establecer_cantidades(valores)
+            messagebox.showinfo("Listo", f"Se cargaron {len(valores)} cantidades.")
+        except ValueError as exc:
+            messagebox.showerror("Error", str(exc))
+
+    # ------------------------------------------------------------------ Tab Orden
+    def _construir_tab_orden(self) -> None:
+        tab = self.tab_orden
+        tab.grid_columnconfigure(1, weight=1)
+        tab.grid_rowconfigure(7, weight=1)
+
+        ctk.CTkLabel(tab, text="Número de orden:").grid(
+            row=0, column=0, padx=12, pady=(12, 6), sticky="w"
+        )
+        self.entry_orden = ctk.CTkEntry(tab, placeholder_text="202608004113")
+        self.entry_orden.grid(row=0, column=1, padx=12, pady=(12, 6), sticky="ew")
+
+        ctk.CTkLabel(tab, text="KG total:").grid(row=1, column=0, padx=12, pady=6, sticky="w")
+        self.entry_kg_total = ctk.CTkEntry(tab, placeholder_text="Ej: 15.4")
+        self.entry_kg_total.grid(row=1, column=1, padx=12, pady=6, sticky="ew")
+
+        ctk.CTkLabel(tab, text="DIG total (opcional):").grid(
+            row=2, column=0, padx=12, pady=6, sticky="w"
+        )
+        self.entry_dig_total = ctk.CTkEntry(tab, placeholder_text="Opcional")
+        self.entry_dig_total.grid(row=2, column=1, padx=12, pady=6, sticky="ew")
+
+        tiempo_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        tiempo_frame.grid(row=3, column=0, columnspan=2, padx=12, pady=6, sticky="ew")
+        tiempo_frame.grid_columnconfigure(1, weight=1)
+        tiempo_frame.grid_columnconfigure(3, weight=1)
+
+        ctk.CTkLabel(tiempo_frame, text="Tiempo total (HH:MM:SS):").grid(
+            row=0, column=0, padx=(0, 8), sticky="w"
+        )
+        self.entry_tiempo_total = ctk.CTkEntry(tiempo_frame, placeholder_text="03:30:00")
+        self.entry_tiempo_total.grid(row=0, column=1, sticky="ew")
+
+        ctk.CTkLabel(tiempo_frame, text="  o  Inicio:").grid(row=0, column=2, padx=8, sticky="w")
+        self.entry_orden_inicio = ctk.CTkEntry(tiempo_frame, width=80, placeholder_text="11:30")
+        self.entry_orden_inicio.grid(row=0, column=3, sticky="w")
+
+        ctk.CTkLabel(tiempo_frame, text="Fin:").grid(row=0, column=4, padx=8, sticky="w")
+        self.entry_orden_fin = ctk.CTkEntry(tiempo_frame, width=80, placeholder_text="15:00")
+        self.entry_orden_fin.grid(row=0, column=5, sticky="w")
+
+        tintas_frame = ctk.CTkFrame(tab)
+        tintas_frame.grid(row=4, column=0, columnspan=2, padx=12, pady=6, sticky="ew")
+        tintas_frame.grid_columnconfigure((1, 3, 5), weight=1)
+
+        ctk.CTkLabel(
+            tintas_frame,
+            text="Tintas totales (opcional, ÷1000 automático):",
+            font=ctk.CTkFont(weight="bold"),
+        ).grid(row=0, column=0, columnspan=6, padx=8, pady=(8, 4), sticky="w")
+
+        ink_defaults = {
+            "cyan": "11.34", "magenta": "30.75", "yellow": "36.86",
+            "black": "17.52", "orange": "25.67", "violet": "3.11",
+        }
+        for i, (nombre, clave) in enumerate(COLORES_TINTA):
+            fila, col = divmod(i, 3)
+            base_col = col * 2
+            ctk.CTkLabel(tintas_frame, text=f"{nombre.split()[1]}:").grid(
+                row=fila + 1, column=base_col, padx=(8, 4), pady=3, sticky="w"
+            )
+            entry = ctk.CTkEntry(tintas_frame, placeholder_text="0")
+            entry.grid(row=fila + 1, column=base_col + 1, padx=(0, 8), pady=3, sticky="ew")
+            if clave in ink_defaults:
+                entry.insert(0, ink_defaults[clave])
+            self._orden_ink_entries[clave] = entry
+
+        btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        btn_frame.grid(row=5, column=0, columnspan=2, padx=12, pady=8, sticky="w")
+
+        ctk.CTkButton(btn_frame, text="CALCULAR", width=140, height=40, command=self._calcular_orden).pack(
+            side="left", padx=(0, 8)
+        )
+        ctk.CTkButton(
+            btn_frame, text="LIMPIAR", width=140, height=40, fg_color="gray40", hover_color="gray30",
+            command=self._limpiar_orden,
+        ).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(
+            btn_frame, text="📋 COPIAR PARA EXCEL", width=180, height=40,
+            command=self._copiar_orden,
+        ).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(
+            btn_frame, text="📋 COPIAR TINTAS", width=160, height=40,
+            command=self._copiar_orden_tintas,
+        ).pack(side="left")
+
+        self.lbl_resumen_orden = ctk.CTkLabel(tab, text="Referencias: —", font=ctk.CTkFont(weight="bold"))
+        self.lbl_resumen_orden.grid(row=6, column=0, columnspan=2, padx=12, pady=(0, 6), sticky="w")
+
+        self.text_orden = ctk.CTkTextbox(tab, height=240, font=ctk.CTkFont(family="Consolas", size=12))
+        self.text_orden.grid(row=7, column=0, columnspan=2, padx=12, pady=(0, 12), sticky="nsew")
+        tab.grid_rowconfigure(7, weight=1)
+        self.text_orden.insert("1.0", "Referencia\tCantidad\tKG\tTiempo\n")
+        self.text_orden.configure(state="disabled")
+
+    def _obtener_consumos_orden(self) -> dict | None:
+        from decimal import Decimal
+
+        consumos = {}
+        tiene_valor = False
+        for nombre, clave in COLORES_TINTA:
+            texto = self._orden_ink_entries[clave].get().strip()
+            if texto:
+                consumos[clave] = validar_valor_tinta(texto, nombre)
+                tiene_valor = True
+            else:
+                consumos[clave] = Decimal("0")
+        return consumos if tiene_valor else None
+
+    def _calcular_orden(self) -> None:
+        try:
+            kg = self.entry_kg_total.get().strip() or None
+            dig = self.entry_dig_total.get().strip() or None
+            tiempo_total = self.entry_tiempo_total.get().strip() or None
+            hora_ini = self.entry_orden_inicio.get().strip() or None
+            hora_fin = self.entry_orden_fin.get().strip() or None
+            consumos = self._obtener_consumos_orden()
+
+            referencias, total = calcular_division_orden(
+                self.entry_orden.get(),
+                self._obtener_cantidades(),
+                kg_total=kg,
+                tiempo_total=tiempo_total,
+                hora_inicio=hora_ini,
+                hora_fin=hora_fin,
+                dig_total=dig,
+                consumos_tinta=consumos,
+            )
+            self._referencias_orden = referencias
+
+            suma_kg = sum(r.kg for r in referencias if r.kg is not None)
+            suma_tiempo = sum(r.tiempo_segundos for r in referencias)
+            self.lbl_resumen_orden.configure(
+                text=f"Referencias: {len(referencias)} | Total cantidades: {total} | "
+                f"Suma KG: {formatear_kg(suma_kg) if kg else '—'} | "
+                f"Suma tiempo: {formato_tiempo_hms(suma_tiempo)}"
+            )
+
+            lineas = ["Referencia\tCantidad\tKG\tTiempo\tDIG"]
+            for ref in referencias:
+                kg_txt = formatear_kg(ref.kg) if ref.kg is not None else "—"
+                dig_txt = formatear_valor_distribuido(ref.dig) if ref.dig is not None else "—"
+                cant_txt = str(int(ref.cantidad) if ref.cantidad == int(ref.cantidad) else ref.cantidad)
+                lineas.append(f"{ref.referencia}\t{cant_txt}\t{kg_txt}\t{ref.tiempo_hms}\t{dig_txt}")
+
+            self.text_orden.configure(state="normal")
+            self.text_orden.delete("1.0", "end")
+            self.text_orden.insert("1.0", "\n".join(lineas))
+            self.text_orden.configure(state="disabled")
+        except ValueError as exc:
+            messagebox.showerror("Error de validación", str(exc))
+
+    def _limpiar_orden(self) -> None:
+        self.entry_orden.delete(0, "end")
+        self.entry_kg_total.delete(0, "end")
+        self.entry_dig_total.delete(0, "end")
+        self.entry_tiempo_total.delete(0, "end")
+        self.entry_orden_inicio.delete(0, "end")
+        self.entry_orden_fin.delete(0, "end")
+        for entry in self._orden_ink_entries.values():
+            entry.delete(0, "end")
+        self._referencias_orden = []
+        self.lbl_resumen_orden.configure(text="Referencias: —")
+        self.text_orden.configure(state="normal")
+        self.text_orden.delete("1.0", "end")
+        self.text_orden.insert("1.0", "Referencia\tCantidad\tKG\tTiempo\n")
+        self.text_orden.configure(state="disabled")
+
+    def _copiar_orden(self) -> None:
+        if not self._referencias_orden:
+            messagebox.showinfo("Sin datos", "Calcule primero la división de la orden.")
+            return
+        incluir_kg = any(r.kg is not None for r in self._referencias_orden)
+        texto = texto_excel_orden(self._referencias_orden, incluir_kg=incluir_kg)
+        copiar_al_portapapeles(texto, self)
+        messagebox.showinfo("Copiado", "Tabla de orden copiada al portapapeles (sin encabezados).")
+
+    def _copiar_orden_tintas(self) -> None:
+        if not self._referencias_orden:
+            messagebox.showinfo("Sin datos", "Calcule primero la división de la orden.")
+            return
+        if not any(r.tintas for r in self._referencias_orden):
+            messagebox.showinfo("Sin tintas", "Ingrese valores de tinta antes de calcular.")
+            return
+        texto = texto_excel_orden_tintas(self._referencias_orden)
+        copiar_al_portapapeles(texto, self)
+        messagebox.showinfo("Copiado", "Tintas por referencia copiadas al portapapeles.")
 
     # ------------------------------------------------------------------ Tab Tiempos
     def _construir_tab_tiempos(self) -> None:
@@ -197,10 +434,16 @@ class CalculadoraProduccionApp(ctk.CTk):
             self._segmentos_tiempo = segmentos
             self.lbl_total_tiempos.configure(text=f"Total cantidades: {total}")
 
-            lineas = ["Inicio\tFin\tCantidad\t%"]
-            for seg in segmentos:
+            lineas = ["Inicio\tFin\tDuración\tCantidad\t%"]
+            from calculos import validar_cantidades
+            cant_dec = validar_cantidades(self._obtener_cantidades())
+            seg_total = duracion_entre_horas(self.entry_inicio.get(), self.entry_fin.get())
+            segs_int = distribuir_tiempo_segundos(seg_total, cant_dec)
+
+            for seg_obj, dur_sec in zip(segmentos, segs_int):
                 lineas.append(
-                    f"{seg.inicio}\t{seg.fin}\t{seg.cantidad}\t{formatear_porcentaje(seg.porcentaje)}"
+                    f"{seg_obj.inicio}\t{seg_obj.fin}\t{formato_tiempo_hms(dur_sec)}\t"
+                    f"{seg_obj.cantidad}\t{formatear_porcentaje(seg_obj.porcentaje)}"
                 )
 
             self.text_tiempos.configure(state="normal")
@@ -277,9 +520,6 @@ class CalculadoraProduccionApp(ctk.CTk):
         self.text_tintas.configure(state="disabled")
 
     def _obtener_consumos_tinta(self) -> dict:
-        from decimal import Decimal
-        from calculos import validar_valor_tinta
-
         consumos = {}
         for nombre, clave in COLORES_TINTA:
             consumos[clave] = validar_valor_tinta(self._ink_entries[clave].get(), nombre)

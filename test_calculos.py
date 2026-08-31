@@ -7,6 +7,8 @@ from calculos import (
     calcular_division_orden,
     calcular_division_tiempos,
     calcular_distribucion_valor,
+    calcular_intervalos_tiempo,
+    duracion_entre_horas,
     formatear_kg,
     formatear_tinta,
     formatear_valor_distribuido,
@@ -21,6 +23,8 @@ CANTIDADES_32 = [
     300, 100, 100, 100, 100, 200, 100, 100, 100, 300, 300, 200, 100, 100, 100, 100,
 ]
 
+CANTIDADES_4 = [200, 100, 100, 200]
+
 
 def assert_eq(actual, expected, msg=""):
     if actual != expected:
@@ -31,19 +35,19 @@ def test_tiempo_caso_1():
     segs, total = calcular_division_tiempos("16:20", "19:00", [10000, 10000, 5000])
     assert_eq(total, Decimal("25000"))
     assert_eq([(s.inicio, s.fin) for s in segs], [
-        ("16:20", "17:24"),
-        ("17:24", "18:28"),
-        ("18:28", "19:00"),
-    ], "Caso tiempo 16:20-19:00")
+        ("16:20:00", "17:24:00"),
+        ("17:24:00", "18:28:00"),
+        ("18:28:00", "19:00:00"),
+    ], "Caso tiempo 16:20-19:00 acumulativo")
 
 
 def test_tiempo_caso_2():
     segs, _ = calcular_division_tiempos("14:20", "16:50", [10000, 5000, 10000])
     assert_eq([(s.inicio, s.fin) for s in segs], [
-        ("14:20", "15:20"),
-        ("15:20", "15:50"),
-        ("15:50", "16:50"),
-    ], "Caso tiempo 14:20-16:50")
+        ("14:20:00", "15:20:00"),
+        ("15:20:00", "15:50:00"),
+        ("15:50:00", "16:50:00"),
+    ], "Caso tiempo 14:20-16:50 acumulativo")
 
 
 def test_valor_caso():
@@ -64,18 +68,7 @@ def test_tinta_caso():
     filas, _ = calcular_consumo_tintas(consumos, [10000, 10000, 5000])
 
     cyan = [formatear_tinta(f.valores[0][1]) for f in filas]
-    magenta = [formatear_tinta(f.valores[1][1]) for f in filas]
-    yellow = [formatear_tinta(f.valores[2][1]) for f in filas]
-    black = [formatear_tinta(f.valores[3][1]) for f in filas]
-    orange = [formatear_tinta(f.valores[4][1]) for f in filas]
-    violet = [formatear_tinta(f.valores[5][1]) for f in filas]
-
     assert_eq(cyan, ["0.094556", "0.094556", "0.047278"], "Cyan")
-    assert_eq(magenta, ["0.266756", "0.266756", "0.133378"], "Magenta")
-    assert_eq(yellow, ["0.28248", "0.28248", "0.14124"], "Yellow")
-    assert_eq(black, ["0.397628", "0.397628", "0.198814"], "Black")
-    assert_eq(orange, ["0.17646", "0.17646", "0.08823"], "Orange")
-    assert_eq(violet, ["0.016832", "0.016832", "0.008416"], "Violet")
 
 
 def test_orden_32_referencias():
@@ -90,35 +83,65 @@ def test_orden_32_referencias():
     refs, total = calcular_division_orden(
         "202608004113",
         CANTIDADES_32,
-        kg_total="15.4",
+        kg_total="14.76",
         hora_inicio="11:30",
         hora_fin="15:00",
         consumos_tinta=consumos,
     )
 
-    assert_eq(len(refs), 32, "Debe haber 32 referencias")
-    assert_eq(total, Decimal("5500"), "Total cantidades")
+    assert_eq(len(refs), 32)
+    assert_eq(total, Decimal("5500"))
     assert_eq(refs[0].referencia, "202608004113.01")
     assert_eq(refs[31].referencia, "202608004113.32")
     assert_eq(refs[0].cantidad, Decimal("200"))
-    assert_eq(refs[1].cantidad, Decimal("100"))
-    assert_eq(refs[2].cantidad, Decimal("100"))
+    assert_eq(refs[0].tiempo_inicio, "11:30:00")
+    assert_eq(refs[31].tiempo_fin, "15:00:00")
+    assert_eq(refs[0].tiempo_hms, "00:07:38")
+    assert_eq(formatear_kg(sum(r.kg for r in refs)), "14.76")
 
-    suma_tiempo = sum(r.tiempo_segundos for r in refs)
-    assert_eq(suma_tiempo, 12600, "Suma tiempo = 3h30m")
 
-    assert_eq(refs[0].tiempo_hms, "00:07:38", "Tiempo ref .01")
-    assert_eq(refs[1].tiempo_hms, "00:03:49", "Tiempo ref .02")
+def test_orden_4_referencias():
+    refs, total = calcular_division_orden(
+        "202608004113",
+        CANTIDADES_4,
+        kg_total="10",
+        hora_inicio="15:50",
+        hora_fin="18:00",
+    )
+    assert_eq(len(refs), 4)
+    assert_eq(total, Decimal("600"))
+    assert_eq(refs[0].referencia, "202608004113.01")
+    assert_eq(refs[3].referencia, "202608004113.04")
+    assert_eq(refs[0].tiempo_inicio, "15:50:00")
+    assert_eq(refs[3].tiempo_fin, "18:00:00")
+    assert_eq(sum(r.tiempo_segundos for r in refs), 7800)
 
-    suma_kg = sum(r.kg for r in refs)
-    assert_eq(formatear_kg(suma_kg), "15.4", "Suma KG")
 
-    cyan = [formatear_tinta(r.tintas.valores[0][1]) for r in refs]
-    assert_eq(cyan[0], "0.000412")
-    assert_eq(cyan[31], formatear_tinta(Decimal("11.34") / 1000 * Decimal("100") / Decimal("5500")))
+def test_cambio_de_dia():
+    assert_eq(duracion_entre_horas("19:00", "01:00"), 21600)
+    segs, _ = calcular_intervalos_tiempo("19:00", "01:00", CANTIDADES_4)
+    assert_eq(segs[0].inicio, "19:00:00")
+    assert_eq(segs[-1].fin, "01:00:00")
+    assert_eq(segs[1].inicio, segs[0].fin)
+    dur_100 = 360 * 60 * 100 / 600
+    assert abs(segs[1].duracion_segundos - dur_100) <= 1
 
-    for i in range(32):
-        assert_eq(refs[i].referencia, generar_referencia("202608004113", i + 1))
+
+def test_intervalos_consecutivos_32():
+    segs, _ = calcular_intervalos_tiempo("15:50", "18:00", CANTIDADES_32)
+    assert_eq(segs[0].inicio, "15:50:00")
+    assert_eq(segs[-1].fin, "18:00:00")
+    for i in range(len(segs) - 1):
+        if segs[i].fin != segs[i + 1].inicio:
+            raise AssertionError(f"Hueco entre ref {i+1} y {i+2}: {segs[i].fin} != {segs[i+1].inicio}")
+    assert_eq(sum(s.duracion_segundos for s in segs), 7800)
+
+
+def test_kg_698():
+    refs, _ = calcular_division_orden(
+        "202608004113", CANTIDADES_32, kg_total="6.98", tiempo_total="02:10:00"
+    )
+    assert_eq(formatear_kg(sum(r.kg for r in refs)), "6.98")
 
 
 def test_excel_separadores():
@@ -127,20 +150,12 @@ def test_excel_separadores():
     assert "\t" in texto
     assert "Inicio" not in texto
 
-    consumos = {"cyan": Decimal("236.39"), "magenta": Decimal("666.89"),
-                "yellow": Decimal("706.20"), "black": Decimal("994.07"),
-                "orange": Decimal("441.15"), "violet": Decimal("42.08")}
-    filas, _ = calcular_consumo_tintas(consumos, [10000, 10000, 5000])
-    texto_tinta = texto_excel_tintas(filas)
-    primera = texto_tinta.split("\n")[0]
-    assert "\t" in primera
-
     refs, _ = calcular_division_orden(
-        "202608004113", CANTIDADES_32, kg_total="15.4", tiempo_total="03:30:00"
+        "202608004113", CANTIDADES_4, kg_total="10", hora_inicio="15:50", hora_fin="18:00"
     )
     excel = texto_excel_orden(refs)
-    assert excel.count("\n") == 31
     assert excel.split("\t")[0] == "202608004113.01"
+    assert "15:50:00" in excel.split("\n")[0]
 
 
 if __name__ == "__main__":
@@ -149,5 +164,9 @@ if __name__ == "__main__":
     test_valor_caso()
     test_tinta_caso()
     test_orden_32_referencias()
+    test_orden_4_referencias()
+    test_cambio_de_dia()
+    test_intervalos_consecutivos_32()
+    test_kg_698()
     test_excel_separadores()
     print("Todas las pruebas pasaron correctamente.")

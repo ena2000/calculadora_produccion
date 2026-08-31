@@ -17,8 +17,6 @@ from calculos import (
     calcular_division_orden,
     calcular_division_tiempos,
     calcular_distribucion_valor,
-    distribuir_tiempo_segundos,
-    duracion_entre_horas,
     formatear_kg,
     formatear_porcentaje,
     formatear_tinta,
@@ -197,7 +195,7 @@ class CalculadoraProduccionApp(ctk.CTk):
     def _construir_tab_orden(self) -> None:
         tab = self.tab_orden
         tab.grid_columnconfigure(1, weight=1)
-        tab.grid_rowconfigure(7, weight=1)
+        tab.grid_rowconfigure(8, weight=1)
 
         ctk.CTkLabel(tab, text="Número de orden:").grid(
             row=0, column=0, padx=12, pady=(12, 6), sticky="w"
@@ -233,9 +231,14 @@ class CalculadoraProduccionApp(ctk.CTk):
         ctk.CTkLabel(tiempo_frame, text="Fin:").grid(row=0, column=4, padx=8, sticky="w")
         self.entry_orden_fin = ctk.CTkEntry(tiempo_frame, width=80, placeholder_text="15:00")
         self.entry_orden_fin.grid(row=0, column=5, sticky="w")
+        ctk.CTkLabel(
+            tab,
+            text="Si fin < inicio (ej. 19:00 → 01:00) se asume cruce de medianoche.",
+            text_color="gray60",
+        ).grid(row=4, column=0, columnspan=2, padx=12, pady=(0, 4), sticky="w")
 
         tintas_frame = ctk.CTkFrame(tab)
-        tintas_frame.grid(row=4, column=0, columnspan=2, padx=12, pady=6, sticky="ew")
+        tintas_frame.grid(row=5, column=0, columnspan=2, padx=12, pady=6, sticky="ew")
         tintas_frame.grid_columnconfigure((1, 3, 5), weight=1)
 
         ctk.CTkLabel(
@@ -261,7 +264,7 @@ class CalculadoraProduccionApp(ctk.CTk):
             self._orden_ink_entries[clave] = entry
 
         btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        btn_frame.grid(row=5, column=0, columnspan=2, padx=12, pady=8, sticky="w")
+        btn_frame.grid(row=6, column=0, columnspan=2, padx=12, pady=8, sticky="w")
 
         ctk.CTkButton(btn_frame, text="CALCULAR", width=140, height=40, command=self._calcular_orden).pack(
             side="left", padx=(0, 8)
@@ -280,12 +283,15 @@ class CalculadoraProduccionApp(ctk.CTk):
         ).pack(side="left")
 
         self.lbl_resumen_orden = ctk.CTkLabel(tab, text="Referencias: —", font=ctk.CTkFont(weight="bold"))
-        self.lbl_resumen_orden.grid(row=6, column=0, columnspan=2, padx=12, pady=(0, 6), sticky="w")
+        self.lbl_resumen_orden.grid(row=7, column=0, columnspan=2, padx=12, pady=(0, 6), sticky="w")
 
         self.text_orden = ctk.CTkTextbox(tab, height=240, font=ctk.CTkFont(family="Consolas", size=12))
-        self.text_orden.grid(row=7, column=0, columnspan=2, padx=12, pady=(0, 12), sticky="nsew")
-        tab.grid_rowconfigure(7, weight=1)
-        self.text_orden.insert("1.0", "Referencia\tCantidad\tKG\tTiempo\n")
+        self.text_orden.grid(row=8, column=0, columnspan=2, padx=12, pady=(0, 12), sticky="nsew")
+        tab.grid_rowconfigure(8, weight=1)
+        self.text_orden.insert(
+            "1.0",
+            "Referencia\tCantidad\tKG\tInicio\tFin\tDuración\tDIG\n",
+        )
         self.text_orden.configure(state="disabled")
 
     def _obtener_consumos_orden(self) -> dict | None:
@@ -331,12 +337,17 @@ class CalculadoraProduccionApp(ctk.CTk):
                 f"Suma tiempo: {formato_tiempo_hms(suma_tiempo)}"
             )
 
-            lineas = ["Referencia\tCantidad\tKG\tTiempo\tDIG"]
+            lineas = ["Referencia\tCantidad\tKG\tInicio\tFin\tDuración\tDIG"]
             for ref in referencias:
                 kg_txt = formatear_kg(ref.kg) if ref.kg is not None else "—"
                 dig_txt = formatear_valor_distribuido(ref.dig) if ref.dig is not None else "—"
                 cant_txt = str(int(ref.cantidad) if ref.cantidad == int(ref.cantidad) else ref.cantidad)
-                lineas.append(f"{ref.referencia}\t{cant_txt}\t{kg_txt}\t{ref.tiempo_hms}\t{dig_txt}")
+                ini_txt = ref.tiempo_inicio or "—"
+                fin_txt = ref.tiempo_fin or "—"
+                lineas.append(
+                    f"{ref.referencia}\t{cant_txt}\t{kg_txt}\t{ini_txt}\t{fin_txt}\t"
+                    f"{ref.tiempo_hms}\t{dig_txt}"
+                )
 
             self.text_orden.configure(state="normal")
             self.text_orden.delete("1.0", "end")
@@ -358,7 +369,10 @@ class CalculadoraProduccionApp(ctk.CTk):
         self.lbl_resumen_orden.configure(text="Referencias: —")
         self.text_orden.configure(state="normal")
         self.text_orden.delete("1.0", "end")
-        self.text_orden.insert("1.0", "Referencia\tCantidad\tKG\tTiempo\n")
+        self.text_orden.insert(
+            "1.0",
+            "Referencia\tCantidad\tKG\tInicio\tFin\tDuración\tDIG\n",
+        )
         self.text_orden.configure(state="disabled")
 
     def _copiar_orden(self) -> None:
@@ -394,7 +408,7 @@ class CalculadoraProduccionApp(ctk.CTk):
         self.entry_inicio.grid(row=0, column=1, padx=12, pady=(12, 6), sticky="ew")
         self.entry_inicio.insert(0, "16:20")
 
-        ctk.CTkLabel(tab, text="Hora final (HH:MM):").grid(
+        ctk.CTkLabel(tab, text="Hora final (HH:MM, cruce de día si fin < inicio):").grid(
             row=1, column=0, padx=12, pady=6, sticky="w"
         )
         self.entry_fin = ctk.CTkEntry(tab, placeholder_text="19:00")
@@ -421,7 +435,7 @@ class CalculadoraProduccionApp(ctk.CTk):
 
         self.text_tiempos = ctk.CTkTextbox(tab, height=220, font=ctk.CTkFont(family="Consolas", size=13))
         self.text_tiempos.grid(row=4, column=0, columnspan=2, padx=12, pady=(0, 12), sticky="nsew")
-        self.text_tiempos.insert("1.0", "Inicio\tFin\tCantidad\t%\n")
+        self.text_tiempos.insert("1.0", "Inicio\tFin\tDuración\tCantidad\t%\n")
         self.text_tiempos.configure(state="disabled")
 
     def _calcular_tiempos(self) -> None:
@@ -435,14 +449,9 @@ class CalculadoraProduccionApp(ctk.CTk):
             self.lbl_total_tiempos.configure(text=f"Total cantidades: {total}")
 
             lineas = ["Inicio\tFin\tDuración\tCantidad\t%"]
-            from calculos import validar_cantidades
-            cant_dec = validar_cantidades(self._obtener_cantidades())
-            seg_total = duracion_entre_horas(self.entry_inicio.get(), self.entry_fin.get())
-            segs_int = distribuir_tiempo_segundos(seg_total, cant_dec)
-
-            for seg_obj, dur_sec in zip(segmentos, segs_int):
+            for seg_obj in segmentos:
                 lineas.append(
-                    f"{seg_obj.inicio}\t{seg_obj.fin}\t{formato_tiempo_hms(dur_sec)}\t"
+                    f"{seg_obj.inicio}\t{seg_obj.fin}\t{seg_obj.duracion_hms}\t"
                     f"{seg_obj.cantidad}\t{formatear_porcentaje(seg_obj.porcentaje)}"
                 )
 
@@ -460,7 +469,7 @@ class CalculadoraProduccionApp(ctk.CTk):
         self._segmentos_tiempo = []
         self.text_tiempos.configure(state="normal")
         self.text_tiempos.delete("1.0", "end")
-        self.text_tiempos.insert("1.0", "Inicio\tFin\tCantidad\t%\n")
+        self.text_tiempos.insert("1.0", "Inicio\tFin\tDuración\tCantidad\t%\n")
         self.text_tiempos.configure(state="disabled")
 
     def _copiar_tiempos(self) -> None:

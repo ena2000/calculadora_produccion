@@ -24,6 +24,8 @@ class SegmentoTiempo:
     fin: str
     cantidad: Decimal
     porcentaje: Decimal
+    duracion_segundos: int = 0
+    duracion_hms: str = ""
 
 
 @dataclass(frozen=True)
@@ -39,28 +41,48 @@ class ReferenciaOrden:
     kg: Decimal | None
     tiempo_segundos: int
     tiempo_hms: str
+    tiempo_inicio: str
+    tiempo_fin: str
     dig: Decimal | None
     tintas: FilaTinta | None
 
 
 def _parse_hora(hora: str) -> datetime:
-    """Convierte 'HH:MM' a datetime base (fecha arbitraria)."""
+    """Convierte HH:MM o HH:MM:SS a datetime base (fecha arbitraria)."""
     hora = hora.strip()
-    try:
-        return datetime.strptime(hora, "%H:%M")
-    except ValueError as exc:
-        raise ValueError(f"Hora inválida '{hora}'. Use el formato HH:MM (ej: 16:20).") from exc
+    for fmt in ("%H:%M:%S", "%H:%M"):
+        try:
+            return datetime.strptime(hora, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"Hora inválida '{hora}'. Use HH:MM o HH:MM:SS (ej: 16:20).")
+
+
+def _formato_hora_hms(dt: datetime) -> str:
+    return dt.strftime("%H:%M:%S")
 
 
 def _formato_hora(dt: datetime) -> str:
     return dt.strftime("%H:%M")
 
 
-def validar_rango_tiempo(hora_inicio: str, hora_fin: str) -> Tuple[datetime, datetime]:
+def resolver_rango_horas(hora_inicio: str, hora_fin: str) -> Tuple[datetime, datetime, int]:
+    """
+    Resuelve un rango horario. Si fin <= inicio, asume cruce de medianoche (+1 día).
+    Retorna (inicio, fin, duracion_segundos).
+    """
     inicio = _parse_hora(hora_inicio)
     fin = _parse_hora(hora_fin)
     if fin <= inicio:
-        raise ValueError("La hora final debe ser posterior a la hora de inicio.")
+        fin = fin + timedelta(days=1)
+    segundos = int((fin - inicio).total_seconds())
+    if segundos <= 0:
+        raise ValueError("El rango horario debe tener duración mayor que cero.")
+    return inicio, fin, segundos
+
+
+def validar_rango_tiempo(hora_inicio: str, hora_fin: str) -> Tuple[datetime, datetime]:
+    inicio, fin, _ = resolver_rango_horas(hora_inicio, hora_fin)
     return inicio, fin
 
 
@@ -138,10 +160,73 @@ def formato_tiempo_hms(segundos: int) -> str:
 
 
 def duracion_entre_horas(hora_inicio: str, hora_fin: str) -> int:
-    """Calcula duración total en segundos entre dos horas HH:MM."""
-    inicio, fin = validar_rango_tiempo(hora_inicio, hora_fin)
-    delta = fin - inicio
-    return int(delta.total_seconds())
+    """Calcula duración total en segundos; soporta cruce de medianoche."""
+    _, _, segundos = resolver_rango_horas(hora_inicio, hora_fin)
+    return segundos
+
+
+def calcular_limites_acumulativos(
+    total_segundos: int,
+    cantidades: Sequence[Decimal],
+) -> Tuple[List[int], List[int]]:
+    """
+    Calcula límites acumulativos proporcionales.
+    LIMITE_i = TIEMPO_TOTAL × (Σ cantidades hasta i / Σ cantidades)
+    Retorna (inicios_seg, fines_seg) por referencia.
+    """
+    if total_segundos <= 0:
+        raise ValueError("El tiempo total debe ser mayor que cero.")
+
+    total_cant = sum(cantidades, Decimal("0"))
+    total_dec = Decimal(str(total_segundos))
+    acum_cant = Decimal("0")
+    fines: List[int] = []
+
+    for i, cant in enumerate(cantidades):
+        acum_cant += cant
+        if i == len(cantidades) - 1:
+            fines.append(total_segundos)
+        else:
+            limite = int(
+                (total_dec * acum_cant / total_cant).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            )
+            fines.append(limite)
+
+    inicios = [0] + fines[:-1]
+    return inicios, fines
+
+
+def calcular_intervalos_tiempo(
+    hora_inicio: str,
+    hora_fin: str,
+    cantidades: Sequence[str | float | int],
+) -> Tuple[List[SegmentoTiempo], Decimal]:
+    """
+    Divide un rango horario en intervalos consecutivos proporcionales
+    usando límites acumulativos en segundos (HH:MM:SS).
+    """
+    cantidades_dec = validar_cantidades(cantidades)
+    porcentajes = calcular_porcentajes(cantidades_dec)
+    base, _, total_seg = resolver_rango_horas(hora_inicio, hora_fin)
+    inicios_seg, fines_seg = calcular_limites_acumulativos(total_seg, cantidades_dec)
+
+    segmentos: List[SegmentoTiempo] = []
+    for cant, pct, seg_ini, seg_fin in zip(cantidades_dec, porcentajes, inicios_seg, fines_seg):
+        duracion = seg_fin - seg_ini
+        ini_dt = base + timedelta(seconds=seg_ini)
+        fin_dt = base + timedelta(seconds=seg_fin)
+        segmentos.append(
+            SegmentoTiempo(
+                inicio=_formato_hora_hms(ini_dt),
+                fin=_formato_hora_hms(fin_dt),
+                cantidad=cant,
+                porcentaje=pct,
+                duracion_segundos=duracion,
+                duracion_hms=formato_tiempo_hms(duracion),
+            )
+        )
+
+    return segmentos, sum(cantidades_dec, Decimal("0"))
 
 
 def distribuir_proporcional(
@@ -178,26 +263,9 @@ def distribuir_tiempo_segundos(
     total_segundos: int,
     cantidades: Sequence[Decimal],
 ) -> List[int]:
-    """Distribuye segundos proporcionalmente; la última referencia absorbe el ajuste."""
-    if total_segundos <= 0:
-        raise ValueError("El tiempo total debe ser mayor que cero.")
-
-    porcentajes = calcular_porcentajes(cantidades)
-    total_dec = Decimal(str(total_segundos))
-    exactos = [total_dec * pct for pct in porcentajes]
-
-    segundos: List[int] = []
-    acumulado = 0
-
-    for i, exacto in enumerate(exactos):
-        if i == len(exactos) - 1:
-            segundos.append(total_segundos - acumulado)
-        else:
-            sec = int(exacto.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-            segundos.append(sec)
-            acumulado += sec
-
-    return segundos
+    """Duración en segundos por referencia (desde límites acumulativos)."""
+    inicios, fines = calcular_limites_acumulativos(total_segundos, cantidades)
+    return [f - i for i, f in zip(inicios, fines)]
 
 
 def calcular_division_orden(
@@ -219,15 +287,18 @@ def calcular_division_orden(
     porcentajes = calcular_porcentajes(cantidades_dec)
     total_cantidades = sum(cantidades_dec, Decimal("0"))
 
-    # Tiempo total en segundos
+    tiene_reloj = bool(hora_inicio and hora_inicio.strip() and hora_fin and hora_fin.strip())
+    base: datetime | None = None
+
     if tiempo_total and tiempo_total.strip():
         segundos_total = parse_tiempo_duracion(tiempo_total)
-    elif hora_inicio and hora_fin:
-        segundos_total = duracion_entre_horas(hora_inicio, hora_fin)
+    elif tiene_reloj:
+        base, _, segundos_total = resolver_rango_horas(hora_inicio, hora_fin)
     else:
         raise ValueError("Debe ingresar tiempo total (HH:MM:SS) o rango inicio/fin.")
 
-    segundos_por_ref = distribuir_tiempo_segundos(segundos_total, cantidades_dec)
+    inicios_seg, fines_seg = calcular_limites_acumulativos(segundos_total, cantidades_dec)
+    duraciones_seg = [f - i for i, f in zip(inicios_seg, fines_seg)]
 
     # KG
     kgs: List[Decimal | None]
@@ -262,18 +333,27 @@ def calcular_division_orden(
         filas_tinta = [None] * len(cantidades_dec)
 
     referencias: List[ReferenciaOrden] = []
-    for i, (cant, pct, seg, kg, dig, tinta) in enumerate(
-        zip(cantidades_dec, porcentajes, segundos_por_ref, kgs, digs, filas_tinta),
+    for i, (cant, pct, seg_ini, seg_fin, dur, kg, dig, tinta) in enumerate(
+        zip(cantidades_dec, porcentajes, inicios_seg, fines_seg, duraciones_seg, kgs, digs, filas_tinta),
         start=1,
     ):
+        if base is not None:
+            t_inicio = _formato_hora_hms(base + timedelta(seconds=seg_ini))
+            t_fin = _formato_hora_hms(base + timedelta(seconds=seg_fin))
+        else:
+            t_inicio = ""
+            t_fin = ""
+
         referencias.append(
             ReferenciaOrden(
                 referencia=generar_referencia(numero_orden, i),
                 cantidad=cant,
                 porcentaje=pct,
                 kg=kg,
-                tiempo_segundos=seg,
-                tiempo_hms=formato_tiempo_hms(seg),
+                tiempo_segundos=dur,
+                tiempo_hms=formato_tiempo_hms(dur),
+                tiempo_inicio=t_inicio,
+                tiempo_fin=t_fin,
                 dig=dig,
                 tintas=tinta,
             )
@@ -291,15 +371,19 @@ def formatear_kg(valor: Decimal) -> str:
 
 
 def texto_excel_orden(referencias: Sequence[ReferenciaOrden], incluir_kg: bool = True) -> str:
-    """Genera texto tabulado REFERENCIA | CANTIDAD | KG | TIEMPO para Excel."""
+    """Genera texto tabulado REFERENCIA | CANTIDAD | KG | INICIO | FIN para Excel."""
     lineas: List[str] = []
     for ref in referencias:
-        partes = [ref.referencia, str(int(ref.cantidad) if ref.cantidad == int(ref.cantidad) else ref.cantidad)]
+        cant_txt = str(int(ref.cantidad) if ref.cantidad == int(ref.cantidad) else ref.cantidad)
+        partes = [ref.referencia, cant_txt]
         if incluir_kg and ref.kg is not None:
             partes.append(formatear_kg(ref.kg))
         elif incluir_kg:
             partes.append("")
-        partes.append(ref.tiempo_hms)
+        if ref.tiempo_inicio and ref.tiempo_fin:
+            partes.extend([ref.tiempo_inicio, ref.tiempo_fin])
+        else:
+            partes.append(ref.tiempo_hms)
         lineas.append("\t".join(partes))
     return "\n".join(lineas)
 
@@ -322,41 +406,7 @@ def calcular_division_tiempos(
     hora_fin: str,
     cantidades: Sequence[str | float | int],
 ) -> Tuple[List[SegmentoTiempo], Decimal]:
-    inicio, fin = validar_rango_tiempo(hora_inicio, hora_fin)
-    cantidades_dec = validar_cantidades(cantidades)
-    porcentajes = calcular_porcentajes(cantidades_dec)
-
-    segundos_total = duracion_entre_horas(hora_inicio, hora_fin)
-    segundos_por_ref = distribuir_tiempo_segundos(segundos_total, cantidades_dec)
-
-    segmentos: List[SegmentoTiempo] = []
-    cursor = inicio
-
-    for cantidad, pct, seg in zip(cantidades_dec, porcentajes, segundos_por_ref):
-        delta = timedelta(seconds=seg)
-        fin_segmento = cursor + delta
-        segmentos.append(
-            SegmentoTiempo(
-                inicio=_formato_hora(cursor),
-                fin=_formato_hora(fin_segmento),
-                cantidad=cantidad,
-                porcentaje=pct,
-            )
-        )
-        cursor = fin_segmento
-
-    # Ajustar último segmento para coincidir exactamente con hora final
-    if segmentos:
-        ultimo = segmentos[-1]
-        segmentos[-1] = SegmentoTiempo(
-            inicio=ultimo.inicio,
-            fin=_formato_hora(fin),
-            cantidad=ultimo.cantidad,
-            porcentaje=ultimo.porcentaje,
-        )
-
-    total = sum(cantidades_dec, Decimal("0"))
-    return segmentos, total
+    return calcular_intervalos_tiempo(hora_inicio, hora_fin, cantidades)
 
 
 def formatear_porcentaje(pct: Decimal) -> str:

@@ -12,7 +12,7 @@ Aplicación de escritorio 100% en Python para calcular divisiones proporcionales
 1. Clona o descarga este repositorio:
 
 ```bash
-git clone https://github.com/ena2000/calculadora_produccion.git
+git clone https://github.com/TU_USUARIO/calculadora_produccion.git
 cd calculadora_produccion
 ```
 
@@ -29,28 +29,11 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-**Windows (rápido):** ejecuta `instalar.bat` en la carpeta del proyecto.
-
 ## Ejecutar la aplicación
-
-**Windows:** doble clic en `ejecutar.bat`
 
 ```bash
 python main.py
 ```
-
-## Convertir PDF de asistencia (RRHH)
-
-Desde la app: pestaña **👥 Asistencia RRHH**.
-
-Desde consola:
-
-```bash
-python convertir_asistencia.py "C:\ruta\ASISTENCIA AGOSTO 2026.pdf"
-```
-
-O: `convertir_asistencia.bat "C:\ruta\archivo.pdf"`
-
 
 ## Funcionalidades
 
@@ -87,24 +70,6 @@ Ingresa los consumos totales de DIG CYAN, MAGENTA, YELLOW, BLACK, ORANGE y VIOLE
 ### 🧮 Distribución de valores
 
 Distribuye un valor numérico (ej: 118.14) según los porcentajes de las cantidades.
-
-### 👥 Asistencia RRHH
-
-Convierte el PDF **Reporte de Eventos** a Excel (misma estructura) y calcula recargos:
-
-| Recargo | Regla aplicada |
-|--------|----------------|
-| **50%** | Horas después de **17:00** en días laborables |
-| **25%** | Turno nocturno / permanece de noche (19:00–06:00, cruza medianoche) |
-| **100%** | Sábado, domingo y feriados (ej. 10/08/2026) |
-
-Salida Excel con 3 hojas: **Eventos**, **Sesiones**, **Resumen recargos**.
-
-```bash
-python main.py
-```
-
-Pestaña **👥 Asistencia RRHH** → seleccionar PDF → **CONVERTIR PDF → EXCEL**
 
 ### Cantidades compartidas
 

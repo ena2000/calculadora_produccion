@@ -50,10 +50,6 @@ Use **📋 PEGAR CANTIDADES** para cargar listas separadas por comas.
 
 Botones **COPIAR HORAS / KG / TINTAS** pegan en Excel solo la columna o fila que necesitas.
 
-### Distribución de un valor (opcional, abajo)
-
-Reparte un número fijo (ej. 118.14) según los mismos porcentajes de cantidad. Es independiente de KG y tintas.
-
 ### 📋 Copiar para Excel
 
 Cada módulo incluye un botón para copiar resultados al portapapeles usando tabulaciones (`\t`), listos para pegar en Excel sin encabezados.

@@ -12,17 +12,13 @@ from calculos import (
     COLORES_TINTA,
     ReferenciaOrden,
     calcular_division_orden,
-    calcular_distribucion_valor,
     formatear_kg,
-    formatear_porcentaje,
-    formatear_valor_distribuido,
     formato_tiempo_hms,
     parse_lista_cantidades,
     texto_excel_orden,
     texto_excel_orden_horas,
     texto_excel_orden_kg,
     texto_excel_orden_tintas,
-    texto_excel_valores,
     validar_valor_tinta,
 )
 from portapapeles import copiar_al_portapapeles
@@ -42,7 +38,6 @@ class CalculadoraProduccionApp(ctk.CTk):
         self.minsize(780, 620)
 
         self._cantidad_entries: List[ctk.CTkEntry] = []
-        self._valores_distribuidos: List = []
         self._referencias_orden: List[ReferenciaOrden] = []
 
         self._orden_ink_entries: dict[str, ctk.CTkEntry] = {}
@@ -72,7 +67,6 @@ class CalculadoraProduccionApp(ctk.CTk):
         self.grid_rowconfigure(2, weight=1)
 
         self._construir_seccion_orden()
-        self._construir_seccion_valores()
 
     def _construir_seccion_cantidades(self) -> None:
         encabezado = ctk.CTkLabel(
@@ -328,7 +322,7 @@ class CalculadoraProduccionApp(ctk.CTk):
         self.lbl_resumen_orden.grid(row=5, column=0, columnspan=2, padx=4, pady=(0, 2), sticky="w")
 
         self._fuente_resultado = ctk.CTkFont(family="Consolas", size=9)
-        self.text_orden = ctk.CTkTextbox(parent, height=115, font=self._fuente_resultado)
+        self.text_orden = ctk.CTkTextbox(parent, height=150, font=self._fuente_resultado)
         self.text_orden.grid(row=6, column=0, columnspan=2, padx=4, pady=(0, 6), sticky="nsew")
         parent.grid_rowconfigure(6, weight=1)
         self.text_orden.insert("1.0", "Calcule para ver el resumen compacto.\n")
@@ -448,88 +442,6 @@ class CalculadoraProduccionApp(ctk.CTk):
             "Copiado",
             "Tintas por referencia: DIG CYAN | valor | … | DIG WHITE | valor (tabulaciones).",
         )
-
-    def _construir_seccion_valores(self) -> None:
-        """Opcional: repartir un monto fijo (costo, etc.) — no es lo mismo que tintas DIG."""
-        parent = self._frame_principal
-        sep = ctk.CTkFrame(parent, height=2, fg_color="gray40")
-        sep.grid(row=7, column=0, columnspan=2, sticky="ew", padx=4, pady=(4, 6))
-
-        ctk.CTkLabel(
-            parent,
-            text="Distribución de un valor (opcional)",
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).grid(row=8, column=0, columnspan=2, padx=4, sticky="w")
-        ctk.CTkLabel(
-            parent,
-            text="Ej.: repartir 118.14 entre referencias según cantidades (independiente de KG y tintas).",
-            text_color="gray60",
-            font=ctk.CTkFont(size=11),
-            wraplength=820,
-            justify="left",
-        ).grid(row=9, column=0, columnspan=2, padx=4, pady=(0, 4), sticky="w")
-
-        val_frame = ctk.CTkFrame(parent, fg_color="transparent")
-        val_frame.grid(row=10, column=0, columnspan=2, padx=4, sticky="ew")
-        val_frame.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(val_frame, text="Valor:").grid(row=0, column=0, padx=(0, 8), sticky="w")
-        self.entry_valor = ctk.CTkEntry(val_frame, width=120, placeholder_text="118.14")
-        self.entry_valor.grid(row=0, column=1, sticky="w")
-
-        ctk.CTkButton(
-            val_frame, text="CALCULAR", width=100, height=32, command=self._calcular_valores
-        ).grid(row=0, column=2, padx=(8, 4))
-        ctk.CTkButton(
-            val_frame,
-            text="📋 COPIAR",
-            width=100,
-            height=32,
-            command=self._copiar_valores,
-        ).grid(row=0, column=3, padx=4)
-
-        self.text_valores = ctk.CTkTextbox(
-            parent, height=72, font=ctk.CTkFont(family="Consolas", size=9)
-        )
-        self.text_valores.grid(row=11, column=0, columnspan=2, padx=4, pady=(4, 0), sticky="ew")
-        self.text_valores.insert("1.0", "Valor\t%\n")
-        self.text_valores.configure(state="disabled")
-
-    def _calcular_valores(self) -> None:
-        try:
-            resultados, porcentajes = calcular_distribucion_valor(
-                self.entry_valor.get(),
-                self._obtener_cantidades(),
-            )
-            self._valores_distribuidos = resultados
-
-            lineas = ["Valor\t%"]
-            for valor, pct in zip(resultados, porcentajes):
-                lineas.append(f"{formatear_valor_distribuido(valor)}\t{formatear_porcentaje(pct)}")
-
-            self.text_valores.configure(state="normal")
-            self.text_valores.delete("1.0", "end")
-            self.text_valores.insert("1.0", "\n".join(lineas))
-            self.text_valores.configure(state="disabled")
-        except ValueError as exc:
-            messagebox.showerror("Error de validación", str(exc))
-
-    def _limpiar_valores(self) -> None:
-        self.entry_valor.delete(0, "end")
-        self._valores_distribuidos = []
-        self.text_valores.configure(state="normal")
-        self.text_valores.delete("1.0", "end")
-        self.text_valores.insert("1.0", "Valor\t%\n")
-        self.text_valores.configure(state="disabled")
-
-    def _copiar_valores(self) -> None:
-        if not self._valores_distribuidos:
-            messagebox.showinfo("Sin datos", "Calcule primero la distribución de valores.")
-            return
-        texto = texto_excel_valores(self._valores_distribuidos)
-        copiar_al_portapapeles(texto, self)
-        messagebox.showinfo("Copiado", "Valores distribuidos copiados al portapapeles.")
-
 
 def iniciar_aplicacion() -> None:
     app = CalculadoraProduccionApp()

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import filedialog, messagebox
 from typing import List, Optional
 
 import customtkinter as ctk
+
+from asistencia_calculos import procesar_pdf_completo
 
 from calculos import (
     COLORES_TINTA,
@@ -82,11 +84,13 @@ class CalculadoraProduccionApp(ctk.CTk):
         self.tab_tiempos = self.tabview.add("⏱️ División de tiempos")
         self.tab_tintas = self.tabview.add("🎨 Consumo de tintas")
         self.tab_valores = self.tabview.add("🧮 Distribución de valores")
+        self.tab_asistencia = self.tabview.add("👥 Asistencia RRHH")
 
         self._construir_tab_orden()
         self._construir_tab_tiempos()
         self._construir_tab_tintas()
         self._construir_tab_valores()
+        self._construir_tab_asistencia()
 
     def _construir_seccion_cantidades(self) -> None:
         encabezado = ctk.CTkLabel(
@@ -644,6 +648,93 @@ class CalculadoraProduccionApp(ctk.CTk):
         texto = texto_excel_valores(self._valores_distribuidos)
         copiar_al_portapapeles(texto, self)
         messagebox.showinfo("Copiado", "Valores distribuidos copiados al portapapeles.")
+
+    # ------------------------------------------------------------------ Tab Asistencia
+    def _construir_tab_asistencia(self) -> None:
+        tab = self.tab_asistencia
+        tab.grid_columnconfigure(1, weight=1)
+        tab.grid_rowconfigure(5, weight=1)
+
+        ctk.CTkLabel(tab, text="PDF de asistencia:").grid(
+            row=0, column=0, padx=12, pady=(12, 6), sticky="w"
+        )
+        self.entry_pdf_asistencia = ctk.CTkEntry(tab, placeholder_text="Ruta del PDF...")
+        self.entry_pdf_asistencia.grid(row=0, column=1, padx=12, pady=(12, 6), sticky="ew")
+
+        ctk.CTkButton(
+            tab, text="Examinar...", width=100, command=self._seleccionar_pdf_asistencia
+        ).grid(row=0, column=2, padx=(0, 12), pady=(12, 6))
+
+        ctk.CTkLabel(tab, text="Excel de salida (opcional):").grid(
+            row=1, column=0, padx=12, pady=6, sticky="w"
+        )
+        self.entry_excel_asistencia = ctk.CTkEntry(tab, placeholder_text="Misma carpeta, mismo nombre .xlsx")
+        self.entry_excel_asistencia.grid(row=1, column=1, columnspan=2, padx=12, pady=6, sticky="ew")
+
+        ctk.CTkLabel(
+            tab,
+            text=(
+                "Recargos: 50% = horas después de 17:00 (día laboral) | "
+                "25% = turno nocturno / permanece de noche | "
+                "100% = sábado, domingo y feriados"
+            ),
+            text_color="gray60",
+            wraplength=820,
+            justify="left",
+        ).grid(row=2, column=0, columnspan=3, padx=12, pady=(0, 8), sticky="w")
+
+        btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        btn_frame.grid(row=3, column=0, columnspan=3, padx=12, pady=8, sticky="w")
+        ctk.CTkButton(
+            btn_frame, text="CONVERTIR PDF → EXCEL", width=200, height=40,
+            command=self._procesar_asistencia,
+        ).pack(side="left", padx=(0, 8))
+
+        self.lbl_asistencia = ctk.CTkLabel(tab, text="—", font=ctk.CTkFont(weight="bold"))
+        self.lbl_asistencia.grid(row=4, column=0, columnspan=3, padx=12, pady=(0, 6), sticky="w")
+
+        self.text_asistencia = ctk.CTkTextbox(tab, height=280, font=ctk.CTkFont(family="Consolas", size=12))
+        self.text_asistencia.grid(row=5, column=0, columnspan=3, padx=12, pady=(0, 12), sticky="nsew")
+        tab.grid_rowconfigure(5, weight=1)
+        self.text_asistencia.insert("1.0", "Operario\t50%\t25%\t100%\n")
+        self.text_asistencia.configure(state="disabled")
+
+    def _seleccionar_pdf_asistencia(self) -> None:
+        ruta = filedialog.askopenfilename(
+            title="Seleccionar PDF de asistencia",
+            filetypes=[("PDF", "*.pdf"), ("Todos", "*.*")],
+        )
+        if ruta:
+            self.entry_pdf_asistencia.delete(0, "end")
+            self.entry_pdf_asistencia.insert(0, ruta)
+
+    def _procesar_asistencia(self) -> None:
+        pdf = self.entry_pdf_asistencia.get().strip()
+        if not pdf:
+            messagebox.showwarning("PDF", "Seleccione un archivo PDF de asistencia.")
+            return
+        excel = self.entry_excel_asistencia.get().strip() or None
+        try:
+            ruta_salida, resumen = procesar_pdf_completo(pdf, excel)
+            self.lbl_asistencia.configure(
+                text=f"Excel generado: {ruta_salida} | Operarios: {len(resumen)}"
+            )
+            lineas = ["Operario\tHoras 50%\tHoras 25%\tHoras 100%\tTotal"]
+            for r in resumen:
+                if r.horas_50 > 0 or r.horas_25 > 0 or r.horas_100 > 0:
+                    lineas.append(
+                        f"{r.nombre}\t{r.horas_50}\t{r.horas_25}\t{r.horas_100}\t{r.horas_totales}"
+                    )
+            self.text_asistencia.configure(state="normal")
+            self.text_asistencia.delete("1.0", "end")
+            self.text_asistencia.insert("1.0", "\n".join(lineas))
+            self.text_asistencia.configure(state="disabled")
+            messagebox.showinfo(
+                "Listo",
+                f"Archivo creado:\n{ruta_salida}\n\nHojas: Eventos, Sesiones, Resumen recargos",
+            )
+        except Exception as exc:
+            messagebox.showerror("Error", str(exc))
 
 
 def iniciar_aplicacion() -> None:

@@ -12,8 +12,6 @@ from calculos import (
     COLORES_TINTA,
     ReferenciaOrden,
     calcular_division_orden,
-    formatear_kg,
-    formato_tiempo_hms,
     parse_lista_cantidades,
     texto_excel_orden,
     texto_excel_orden_horas,
@@ -33,9 +31,9 @@ class CalculadoraProduccionApp(ctk.CTk):
         ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("blue")
 
-        self.title("Calculadora de Producción")
-        self.geometry("880x720")
-        self.minsize(780, 620)
+        self.title("Calculadora de distribución de horas, kilogramos, tintas")
+        self.geometry("880x620")
+        self.minsize(780, 560)
 
         self._cantidad_entries: List[ctk.CTkEntry] = []
         self._referencias_orden: List[ReferenciaOrden] = []
@@ -51,8 +49,8 @@ class CalculadoraProduccionApp(ctk.CTk):
 
         titulo = ctk.CTkLabel(
             self,
-            text="Calculadora de Producción",
-            font=ctk.CTkFont(size=24, weight="bold"),
+            text="Calculadora de distribución de horas, kilogramos, tintas",
+            font=ctk.CTkFont(size=20, weight="bold"),
         )
         titulo.grid(row=0, column=0, padx=20, pady=(16, 8), sticky="w")
 
@@ -62,10 +60,7 @@ class CalculadoraProduccionApp(ctk.CTk):
         self._construir_seccion_cantidades()
 
         self._frame_principal = ctk.CTkFrame(self, fg_color="transparent")
-        self._frame_principal.grid(row=2, column=0, padx=20, pady=(0, 12), sticky="nsew")
-        self._frame_principal.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(2, weight=1)
-
+        self._frame_principal.grid(row=2, column=0, padx=20, pady=(0, 12), sticky="nw")
         self._construir_seccion_orden()
 
     def _construir_seccion_cantidades(self) -> None:
@@ -236,12 +231,12 @@ class CalculadoraProduccionApp(ctk.CTk):
     # ------------------------------------------------------------------ Tab Orden
     def _construir_seccion_orden(self) -> None:
         parent = self._frame_principal
-        parent.grid_columnconfigure(1, weight=1)
-        parent.grid_rowconfigure(6, weight=1)
 
-        ctk.CTkLabel(parent, text="KG total:").grid(row=0, column=0, padx=4, pady=(4, 4), sticky="w")
-        self.entry_kg_total = ctk.CTkEntry(parent, placeholder_text="Ej: 15.4")
-        self.entry_kg_total.grid(row=0, column=1, padx=4, pady=(4, 4), sticky="ew")
+        kg_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        kg_frame.grid(row=0, column=0, columnspan=2, padx=4, pady=(4, 4), sticky="w")
+        ctk.CTkLabel(kg_frame, text="KG total:").grid(row=0, column=0, padx=(0, 8), sticky="w")
+        self.entry_kg_total = ctk.CTkEntry(kg_frame, width=120, placeholder_text="Ej: 15.4")
+        self.entry_kg_total.grid(row=0, column=1, sticky="w")
 
         tiempo_frame = ctk.CTkFrame(parent, fg_color="transparent")
         tiempo_frame.grid(row=1, column=0, columnspan=2, padx=4, pady=4, sticky="ew")
@@ -316,18 +311,6 @@ class CalculadoraProduccionApp(ctk.CTk):
             command=self._copiar_orden_tintas,
         ).pack(side="left")
 
-        self.lbl_resumen_orden = ctk.CTkLabel(
-            parent, text="Referencias: —", font=ctk.CTkFont(size=10, weight="bold")
-        )
-        self.lbl_resumen_orden.grid(row=5, column=0, columnspan=2, padx=4, pady=(0, 2), sticky="w")
-
-        self._fuente_resultado = ctk.CTkFont(family="Consolas", size=9)
-        self.text_orden = ctk.CTkTextbox(parent, height=150, font=self._fuente_resultado)
-        self.text_orden.grid(row=6, column=0, columnspan=2, padx=4, pady=(0, 6), sticky="nsew")
-        parent.grid_rowconfigure(6, weight=1)
-        self.text_orden.insert("1.0", "Calcule para ver el resumen compacto.\n")
-        self.text_orden.configure(state="disabled")
-
     def _obtener_consumos_orden(self) -> dict | None:
         from decimal import Decimal
 
@@ -350,7 +333,7 @@ class CalculadoraProduccionApp(ctk.CTk):
             hora_fin = self.entry_orden_fin.get().strip() or None
             consumos = self._obtener_consumos_orden()
 
-            referencias, total = calcular_division_orden(
+            referencias, _ = calcular_division_orden(
                 "",
                 self._obtener_cantidades(),
                 kg_total=kg,
@@ -359,29 +342,6 @@ class CalculadoraProduccionApp(ctk.CTk):
                 consumos_tinta=consumos,
             )
             self._referencias_orden = referencias
-
-            suma_kg = sum(r.kg for r in referencias if r.kg is not None)
-            suma_tiempo = sum(r.tiempo_segundos for r in referencias)
-            self.lbl_resumen_orden.configure(
-                text=f"Referencias: {len(referencias)} | Total cantidades: {total} | "
-                f"Suma KG: {formatear_kg(suma_kg) if kg else '—'} | "
-                f"Suma tiempo: {formato_tiempo_hms(suma_tiempo)}"
-            )
-
-            lineas = ["Ref\tCant\tKG\tInicio\tFin\tDur"]
-            for ref in referencias:
-                kg_txt = formatear_kg(ref.kg) if ref.kg is not None else ""
-                cant_txt = str(int(ref.cantidad) if ref.cantidad == int(ref.cantidad) else ref.cantidad)
-                ini_txt = ref.tiempo_inicio or ""
-                fin_txt = ref.tiempo_fin or ""
-                lineas.append(
-                    f"{ref.referencia}\t{cant_txt}\t{kg_txt}\t{ini_txt}\t{fin_txt}\t{ref.tiempo_hms}"
-                )
-
-            self.text_orden.configure(state="normal")
-            self.text_orden.delete("1.0", "end")
-            self.text_orden.insert("1.0", "\n".join(lineas))
-            self.text_orden.configure(state="disabled")
         except ValueError as exc:
             messagebox.showerror("Error de validación", str(exc))
 
@@ -392,11 +352,6 @@ class CalculadoraProduccionApp(ctk.CTk):
         for entry in self._orden_ink_entries.values():
             entry.delete(0, "end")
         self._referencias_orden = []
-        self.lbl_resumen_orden.configure(text="Referencias: —")
-        self.text_orden.configure(state="normal")
-        self.text_orden.delete("1.0", "end")
-        self.text_orden.insert("1.0", "Calcule para ver el resumen compacto.\n")
-        self.text_orden.configure(state="disabled")
 
     def _copiar_orden(self) -> None:
         if not self._referencias_orden:

@@ -1,4 +1,4 @@
-# Calculadora de Producción
+# Calculadora de distribución de horas, kilogramos, tintas
 
 Aplicación de escritorio 100% en Python para calcular divisiones proporcionales de tiempos de producción, consumo de tintas y distribución de valores. Diseñada para copiar resultados directamente en Excel.
 

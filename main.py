@@ -1,4 +1,4 @@
-"""Punto de entrada de la Calculadora de Producción."""
+"""Punto de entrada de la calculadora de distribución de horas, kilogramos, tintas."""
 
 from interfaz import iniciar_aplicacion
 

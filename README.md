@@ -37,43 +37,22 @@ python main.py
 
 ## Funcionalidades
 
-### 📦 División de órdenes (principal)
+### Pantalla principal
 
-Divide una orden de producción en referencias consecutivas (`.01`, `.02`, …) con distribución proporcional de:
+Divide la producción en referencias (`.01`, `.02`, …) con distribución proporcional de:
 
-- **Cantidades** (una referencia por cada cantidad ingresada)
-- **KG total** proporcional a cada referencia
-- **Tiempo total** en `HH:MM:SS` (o rango inicio/fin)
-- **DIG total** (opcional)
-- **Tintas** (÷1000 automático, opcional)
-
-**Ejemplo:** Orden `202608004113` con 32 cantidades → genera `202608004113.01` … `202608004113.32`.
+- **Cantidades** (arriba: generar referencias o pegar lista)
+- **KG total** por referencia
+- **Horario** solo con **inicio** y **fin** (HH:MM); cada referencia recibe su tramo
+- **Tintas** del lote (valor crudo ÷ 1000 → reparto por cantidad). Los nombres **DIG CYAN**, **DIG MAGENTA**, etc. son etiquetas de Excel para tintas, no un campo “DIG total” aparte.
 
 Use **📋 PEGAR CANTIDADES** para cargar listas separadas por comas.
 
-### ⏱️ División de tiempos
+Botones **COPIAR HORAS / KG / TINTAS** pegan en Excel solo la columna o fila que necesitas.
 
-Ingresa hora de inicio, hora final y las cantidades producidas. La aplicación calcula automáticamente los intervalos de tiempo proporcionales a cada cantidad.
+### Distribución de un valor (opcional, abajo)
 
-**Ejemplo:** 16:20 → 19:00 con cantidades 10000, 10000, 5000:
-
-```
-16:20 → 17:24  (40%)
-17:24 → 18:28  (40%)
-18:28 → 19:00  (20%)
-```
-
-### 🎨 Consumo de tintas
-
-Ingresa los consumos totales de DIG CYAN, MAGENTA, YELLOW, BLACK, ORANGE y VIOLET. Usa las mismas cantidades de producción para distribuir proporcionalmente cada tinta.
-
-### 🧮 Distribución de valores
-
-Distribuye un valor numérico (ej: 118.14) según los porcentajes de las cantidades.
-
-### Cantidades compartidas
-
-Las cantidades de producción se ingresan una sola vez en la parte superior y se reutilizan en las tres pestañas. Puedes agregar o eliminar cantidades dinámicamente.
+Reparte un número fijo (ej. 118.14) según los mismos porcentajes de cantidad. Es independiente de KG y tintas.
 
 ### 📋 Copiar para Excel
 

@@ -15,6 +15,7 @@ COLORES_TINTA: Tuple[Tuple[str, str], ...] = (
     ("DIG BLACK", "black"),
     ("DIG ORANGE", "orange"),
     ("DIG VIOLET", "violet"),
+    ("DIG WHITE", "white"),
 )
 
 
@@ -113,12 +114,12 @@ def calcular_porcentajes(cantidades: Sequence[Decimal]) -> List[Decimal]:
 
 
 def generar_referencia(numero_orden: str, indice: int) -> str:
-    """Genera referencia con dos dígitos: ORDEN.01, ORDEN.02, ..."""
-    orden = numero_orden.strip()
-    if not orden:
-        raise ValueError("Debe ingresar el número de orden.")
+    """Genera referencia .01, .02, … o ORDEN.01 si hay número de orden."""
     if indice < 1:
         raise ValueError("El índice de referencia debe ser mayor que cero.")
+    orden = numero_orden.strip()
+    if not orden:
+        return f".{indice:02d}"
     return f"{orden}.{indice:02d}"
 
 
@@ -295,7 +296,7 @@ def calcular_division_orden(
     elif tiene_reloj:
         base, _, segundos_total = resolver_rango_horas(hora_inicio, hora_fin)
     else:
-        raise ValueError("Debe ingresar tiempo total (HH:MM:SS) o rango inicio/fin.")
+        raise ValueError("Debe ingresar hora inicio y hora fin (HH:MM).")
 
     inicios_seg, fines_seg = calcular_limites_acumulativos(segundos_total, cantidades_dec)
     duraciones_seg = [f - i for i, f in zip(inicios_seg, fines_seg)]
@@ -385,6 +386,28 @@ def texto_excel_orden(referencias: Sequence[ReferenciaOrden], incluir_kg: bool =
         else:
             partes.append(ref.tiempo_hms)
         lineas.append("\t".join(partes))
+    return "\n".join(lineas)
+
+
+def texto_excel_orden_horas(referencias: Sequence[ReferenciaOrden]) -> str:
+    """Copia inicio y fin por referencia (tabulado), sin encabezados."""
+    lineas: List[str] = []
+    for ref in referencias:
+        if ref.tiempo_inicio and ref.tiempo_fin:
+            lineas.append(f"{ref.tiempo_inicio}\t{ref.tiempo_fin}")
+        else:
+            lineas.append(ref.tiempo_hms)
+    return "\n".join(lineas)
+
+
+def texto_excel_orden_kg(referencias: Sequence[ReferenciaOrden]) -> str:
+    """Copia KG por referencia (una columna), sin encabezados."""
+    lineas: List[str] = []
+    for ref in referencias:
+        if ref.kg is not None:
+            lineas.append(formatear_kg(ref.kg))
+        else:
+            lineas.append("")
     return "\n".join(lineas)
 
 
